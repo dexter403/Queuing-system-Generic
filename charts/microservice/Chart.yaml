@@ -1,0 +1,6 @@
+apiVersion: v2
+name: microservice
+description: A Helm chart for @GenericApp/agent-template-service
+type: application
+version: 1.0.0
+appVersion: latest

@@ -1,0 +1,98 @@
+trigger:
+  batch: true
+  branches:
+    include:
+      - develop
+      - staging
+      - production
+
+name: $(SourceBranchName).$(Date:yyyy-MM-dd)$(Rev:.r)
+
+resources:
+  - repo: self
+
+pool:
+  vmImage: ubuntu-20.04
+
+variables:
+  projectPath: $(System.DefaultWorkingDirectory)/src/azure-functions
+
+steps:
+  - powershell: |
+      cd $(System.DefaultWorkingDirectory)
+
+      $editedFiles = git diff HEAD HEAD~ --name-only
+
+      echo "$($editedFiles.Length) files modified:"
+
+      $editedFiles | ForEach-Object {
+        echo $_
+          Switch -Wildcard ($_ ) {
+              'src/azure-functions/*' { 
+                    Write-Host ("##vso[task.setvariable variable=isFilesChanged]True")
+              }
+          }        
+      }
+    displayName: Set isFilesChanged variable if files changed 
+
+  - bash: |
+      echo "projectPath: $(projectPath)"
+    displayName: Show variables
+    condition: and(succeeded(), eq(variables['isFilesChanged'], 'True'))
+
+  - bash: |
+      if [ -f extensions.csproj ]
+      then
+          dotnet build extensions.csproj --output ./bin
+      fi
+    displayName: 'Build extensions'
+    condition: and(succeeded(), eq(variables['isFilesChanged'], 'True'))
+
+  - task: NodeTool@0
+    displayName: Use Node version 10.14.1
+    condition: and(succeeded(), eq(variables['isFilesChanged'], 'True'))
+    inputs:
+      versionSpec: 10.14.1
+
+  - task: Npm@1
+    displayName: Install Application Dependencies
+    condition: and(succeeded(), eq(variables['isFilesChanged'], 'True'))
+    inputs:
+      workingDir: $(projectPath)
+      verbose: false
+
+  - task: Npm@1
+    displayName: Run 'build' script
+    condition: and(succeeded(), eq(variables['isFilesChanged'], 'True'))
+    inputs:
+      command: custom
+      workingDir: $(projectPath)
+      verbose: false
+      customCommand: run build --if-present
+
+  - task: Npm@1
+    displayName: Remove extraneous packages
+    condition: and(succeeded(), eq(variables['isFilesChanged'], 'True'))
+    inputs:
+      command: custom
+      workingDir: $(projectPath)
+      verbose: false
+      customCommand: prune --production
+
+  - task: ArchiveFiles@2
+    condition: and(succeeded(), eq(variables['isFilesChanged'], 'True'))
+    inputs:
+      rootFolderOrFile: $(projectPath)
+      includeRootFolder: false
+      archiveType: 'zip'
+      archiveFile: '$(Build.ArtifactStagingDirectory)/$(app)-$(service)-1.0.$(Build.BuildId).zip'
+      replaceExistingArchive: true
+
+  - powershell: |
+      Write-Host "##vso[build.addbuildtag]latest"
+    displayName: Add Latest Build tag
+    condition: and(succeeded(), eq(variables['isFilesChanged'], 'True'))
+
+  - task: PublishBuildArtifacts@1
+    displayName: 'Publish Artifact: drop'
+    condition: and(succeeded(), eq(variables['isFilesChanged'], 'True'))

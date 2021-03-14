@@ -1,0 +1,53 @@
+trigger:
+  batch: true
+  branches:
+    include:
+      - develop
+      - staging
+      - production
+
+name: $(SourceBranchName).$(Date:yyyy-MM-dd)$(Rev:.r)
+
+resources:
+  - repo: self
+
+pool:
+  vmImage: ubuntu-20.04
+
+variables:
+  - template: ../../pipeline-templates/microservice-variables-template.yml
+
+steps:
+  - powershell: |
+      cd $(System.DefaultWorkingDirectory)
+      $editedFiles = git diff HEAD HEAD~ --name-only
+      echo "$($editedFiles.Length) files modified:"
+      $editedFiles | ForEach-Object {
+        echo $_
+          Switch -Wildcard ($_ ) {
+              'src/services/$(service)/*' { 
+                    Write-Host ("##vso[task.setvariable variable=isFilesChanged]True")
+              }
+              'charts/$(app)-$(service)/*' { 
+                    Write-Host ("##vso[task.setvariable variable=isFilesChanged]True")
+              }
+              'src/modules/data/generic-repository/*' { 
+                Write-Host ("##vso[task.setvariable variable=isFilesChanged]True")
+              }
+              'src/modules/library/shared-utilities/*' { 
+                Write-Host ("##vso[task.setvariable variable=isFilesChanged]True")
+              }
+              'src/modules/library/micro-service-communicator/*' { 
+                Write-Host ("##vso[task.setvariable variable=isFilesChanged]True")
+              }
+              'src/modules/library/micro-service-rulesprocessor/*' { 
+                Write-Host ("##vso[task.setvariable variable=isFilesChanged]True")
+              }
+              'src/shared/shared-types/*' { 
+                Write-Host ("##vso[task.setvariable variable=isFilesChanged]True")
+              }
+          }        
+      }
+    displayName: Set isFilesChanged variable if files changed 
+
+  - template: ../../pipeline-templates/microservice-build-steps-template.yml

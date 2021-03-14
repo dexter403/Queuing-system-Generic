@@ -1,0 +1,57 @@
+trigger:
+  batch: true
+  branches:
+    include:
+      - develop
+      - staging
+      - production
+
+name: $(SourceBranchName).$(Date:yyyy-MM-dd)$(Rev:.r)
+
+variables:
+  apiRoutesFolderPath: $(Build.SourcesDirectory)/src/internal/data
+
+resources:
+  - repo: self
+
+pool:
+  vmImage: ubuntu-20.04
+
+steps:
+  - powershell: |
+      cd $(System.DefaultWorkingDirectory)
+      $editedFiles = git diff HEAD HEAD~ --name-only
+      echo "$($editedFiles.Length) files modified:"
+      $editedFiles | ForEach-Object {
+        echo $_
+          Switch -Wildcard ($_ ) {
+              'src/internal/data/api-routes.json' { 
+                    Write-Host ("##vso[task.setvariable variable=isFilesChanged]True")
+              }
+          }        
+      }
+    displayName: Set isFilesChanged variable if files changed
+
+  - bash: |
+      echo "APIRoutesFolderPath: $(apiRoutesFolderPath)"
+    displayName: Show variables
+    condition: and(succeeded(), eq(variables['isFilesChanged'], 'True'))
+
+  - task: CopyFiles@2
+    displayName: Copy API Routes Json
+    condition: and(succeeded(), eq(variables['isFilesChanged'], 'True'))
+    inputs:
+      SourceFolder: $(apiRoutesFolderPath)
+      contents: $(apiRoutesFolderPath)/api-routes.json 
+      targetFolder: $(Build.ArtifactStagingDirectory)
+      flattenFolders: true
+  
+  - powershell: |
+      Write-Host "##vso[build.addbuildtag]latest"
+    displayName: Add Latest Build tag
+    condition: and(succeeded(), eq(variables['isFilesChanged'], 'True'))
+
+  - publish: $(Build.ArtifactStagingDirectory)
+    displayName: Publish artifacts
+    condition: and(succeeded(), eq(variables['isFilesChanged'], 'True'))
+    artifact: drop

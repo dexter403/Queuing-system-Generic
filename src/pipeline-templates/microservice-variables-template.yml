@@ -1,0 +1,38 @@
+
+variables:
+  ${{ if and(ne(variables['Build.SourceBranchName'], 'staging'), ne(variables['Build.SourceBranchName'], 'production')) }}:
+    env: dev
+
+  ${{ if eq(variables['Build.SourceBranchName'], 'staging') }}:
+    env: staging
+
+  ${{ if eq(variables['Build.SourceBranchName'], 'production') }}:
+    env: prod
+
+  tag: $(Build.BuildNumber)
+  serviceName: $(app)-$(service)
+
+  ${{ if eq(variables.env, 'dev') }}:
+    containerRegistry: ***********************
+    azureSubscription: ***********************
+    azureResourceGroup: ***********************
+    kubernetesCluster: ***********************
+
+  ${{ if eq(variables.env, 'staging') }}:
+    containerRegistry: ***********************
+    azureSubscription: ***********************
+    azureResourceGroup: ***********************
+    kubernetesCluster: ***********************
+
+  ${{ if eq(variables.env, 'prod') }}:
+    containerRegistry: ***********************
+    azureSubscription: ***********************
+    azureResourceGroup: ***********************
+    kubernetesCluster: ***********************
+
+  kubernetesnamespace: GenericApp
+  containerRegistryFQDN: $(containerRegistry).azurecr.io
+
+  chartName: $(serviceName)
+  chartVersion: 1.0.$(Build.BuildId)
+  chartPath: $(Build.SourcesDirectory)/charts/$(serviceName)

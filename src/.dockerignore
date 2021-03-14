@@ -1,0 +1,10 @@
+**/.git
+**/.gitignore
+**/.dockerignore
+**/.vscode
+**/.prettierrc
+**/.env
+**/*.md
+**/Dockerfile
+**/dockerize.ps1
+**/node_modules

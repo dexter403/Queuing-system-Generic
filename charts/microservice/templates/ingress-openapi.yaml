@@ -1,0 +1,24 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Chart.Name }}-openapi
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "app.labels" . | nindent 4 }}
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/use-regex: "false"
+    nginx.ingress.kubernetes.io/proxy-body-size: 5m
+    nginx.ingress.kubernetes.io/rewrite-target: /swagger-json
+spec:
+  ingressClassName: nginx
+  rules:
+  - http:
+      paths:
+      - path: {{ .Values.ingressSwaggerPath }}
+        pathType: Prefix
+        backend:
+          service:
+            name:  {{ .Chart.Name }}
+            port:
+              number: 80

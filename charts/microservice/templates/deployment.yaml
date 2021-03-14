@@ -1,0 +1,111 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Chart.Name }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    tags.datadoghq.com/env: staging
+    tags.datadoghq.com/service: {{ .Chart.Name }}
+    tags.datadoghq.com/version: v1
+    {{- include "app.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "app.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "app.selectorLabels" . | nindent 8 }}
+        tags.datadoghq.com/env: staging
+        tags.datadoghq.com/service: {{ .Chart.Name }}
+        tags.datadoghq.com/version: v1
+        admission.datadoghq.com/enabled: "true"
+      annotations:
+        admission.datadoghq.com/js-lib.version: v5.5.0
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.repository }}/{{ .Chart.Name }}:{{ .Chart.AppVersion }}"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+          - name: APP_VERSION
+            value: "{{ .Chart.AppVersion }}"
+          - name: APP_NAME
+            value: "{{ .Values.appName }}"
+          - name: USE_MOCK
+            value: "{{ .Values.useMock }}"
+          - name: CONTAINER_NAME
+            value: "{{ .Values.containerName }}"
+          - name: PARTITION_KEY
+            value: "{{ .Values.partitionKey }}"
+          - name: LAVI_GLOBAL_CONTAINER_NAME
+            value: "{{ .Values.laviGlobalContainerName }}"
+          - name: LAVI_GLOBAL_CONTAINER_PARTITION_KEY
+            value: "{{ .Values.laviGlobalContainerPartitionKey }}"
+          - name: AZURE_FUNCTION_BASE_API_URL
+            value: "{{ .Values.azureFunctionBaseAPIUrl }}"
+          - name: AZURE_FUNCTION_NOTIFICATION_BASE_API_URL
+            value: "{{ .Values.azureNotificationFunctionBaseAPIUrl }}"
+          - name: CUSTOM_AZURE_FUNCTION_API_KEY
+            value: "{{ .Values.customAzureFunctionAPIKey }}"
+          - name: SERVICE_BUS_CONNECTION_STRING
+            value: "{{ .Values.serviceBustConnectionString }}"
+          - name: COMPANY_SMS_QUEUE_NAME
+            value: "{{ .Values.smsQueueName }}"
+          - name: FE_APPLICATION_URL
+            value: "{{ .Values.feApplicationURL }}"
+          - name: FE_APPLICATION_URL_TAILOR
+            value: "{{ .Values.feApplicationURLTailor }}"
+          - name: TAILORED_COMPANYID
+            value: "{{ .Values.tailorBrandCompanyId }}"
+          - name: LAVI_DELETE_TTL_TIME
+            value: "{{ .Values.laviDeleteTTLTime }}"
+          - name: SMS_CONVERSATION_CONTAINER_NAME
+            value: "{{ .Values.smsConversationContainerName }}"
+          - name: SMS_CONVERSATION_CONTAINER_PK
+            value: "{{ .Values.smsConversationContainerPk }}"
+          - name: NOTES_CONTAINER_NAME
+            value: "{{ .Values.notesContainerName }}"
+          - name: NOTES_CONTAINER_PK
+            value: "{{ .Values.notesContainerPk }}"
+          - name: COMPANY_EMAIL_QUEUE_NAME
+            value: "{{ .Values.emailQueueName }}"
+          - name: USESHORTFORMURL
+            value: "{{ .Values.useShortFormUrl }}"
+          - name: LATCH_OUTGOING_QUEUENAME
+            value: "{{ .Values.latchOutGoingQueueName }}"
+          - name: LATCH_METRICS_QUEUENAME
+            value: "{{ .Values.latchMetricsQueueName }}"
+          - name: DD_AGENT_HOST
+            valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+          - name: DD_LOGS_INJECTION
+            value: "true"
+          - name: DD_PROFILING_ENABLED
+            value: "false"
+          - name: DD_TRACE_SAMPLE_RATE
+            value: "1"
+          - name: DD_TRACE_AGENT_URL
+            value: 'unix:///var/run/datadog/apm.socket'
+          volumeMounts:
+          - name: apmsocketpath
+            mountPath: /var/run/datadog
+          envFrom:
+          - configMapRef:
+              name: {{ .Values.configMap }}
+          - secretRef:
+              name: {{ .Values.secrets }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - hostPath:
+            path: /var/run/datadog/
+          name: apmsocketpath

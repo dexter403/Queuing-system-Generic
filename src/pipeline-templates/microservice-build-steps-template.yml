@@ -1,0 +1,99 @@
+steps:
+  - powershell: |
+      $buildNumber = "$(Build.BuildNumber)".toLower()
+      if ($buildNumber.startsWith('GenericApp-') -eq $true) {
+        $parts = $buildNumber.Split('.').Split('_').Split(' ')
+        $name = $parts[0]
+        $date = $parts[$parts.Length - 2]
+        $rev = $parts[$parts.Length - 1]
+        $buildNumber = "$name.$date.$rev"
+      }
+      Write-Host "##vso[task.setvariable variable=tag]$buildNumber"
+      Write-Host "`"tag`" variable changed to `"$buildNumber`""
+    displayName: Configure variables
+    condition: and(succeeded(), eq(variables['isFilesChanged'], 'True'))
+
+
+  - task: Docker@2
+    displayName: Login to ACR
+    condition: and(succeeded(), eq(variables['isFilesChanged'], 'True'))
+    inputs:
+      command: login
+      containerRegistry: $(containerRegistry)
+
+  - task: Docker@2
+    displayName: Docker build
+    condition: and(succeeded(), eq(variables['isFilesChanged'], 'True'))
+    inputs:
+      command: build
+      repository: $(serviceName)
+      dockerfile: $(Build.SourcesDirectory)/src/services/$(service)/Dockerfile
+      containerRegistry: $(containerRegistry)
+      buildContext: $(Build.SourcesDirectory)/src
+      arguments: --build-arg SERVICE=$(service)
+      tags: $(tag)
+
+  - task: Docker@2
+    displayName: Docker push to ACR
+    condition: and(succeeded(), eq(variables['isFilesChanged'], 'True'))
+    inputs:
+      command: push
+      repository: $(serviceName)
+      containerRegistry: $(containerRegistry)
+      tags: $(tag)
+
+  - task: HelmInstaller@1
+    displayName: Install Helm
+    condition: and(succeeded(), eq(variables['isFilesChanged'], 'True'))
+    inputs:
+      helmVersionToInstall: 3.6.3
+
+  - powershell: |
+      $chart = Get-Content -Path Chart.yaml -Raw
+      $chart = $chart -replace 'version: (.*)', "version: $(chartVersion)"
+      $chart = $chart -replace 'appVersion: (.*)', "appVersion: $(tag)"
+      Set-Content -Path Chart.yaml -Value $chart
+      Copy-Item -Path values/$(env)-values.yaml -Destination values.yaml -Force
+    displayName: Prepare helm chart
+    condition: and(succeeded(), eq(variables['isFilesChanged'], 'True'))
+    workingDirectory: $(chartPath)
+
+  - task: HelmDeploy@0
+    displayName: Helm package
+    condition: and(succeeded(), eq(variables['isFilesChanged'], 'True'))
+    inputs:
+      command: package
+      save: false
+      chartPath: $(chartPath)
+
+  - task: HelmDeploy@0
+    displayName: Helm push to ACR
+    condition: and(succeeded(), eq(variables['isFilesChanged'], 'True'))
+    inputs:
+      command: save
+      chartNameForACR: $(chartName):$(tag)
+      chartPathForACR: $(chartPath)
+      connectionType: Azure Resource Manager
+      azureSubscriptionEndpointForACR: $(azureSubscription)
+      azureResourceGroupForACR: $(azureResourceGroup)
+      azureContainerRegistry: $(containerRegistryFQDN)
+
+  - powershell: |
+      Set-Content -Path build.json -Value "{
+        `"env`": `"$(env)`",
+        `"registry`": `"$(containerRegistryFQDN)`",
+        `"chart`": `"helm/$(chartName):$(tag)`"
+      }"
+    displayName: Create build file
+    condition: and(succeeded(), eq(variables['isFilesChanged'], 'True'))
+    workingDirectory: $(Build.ArtifactStagingDirectory)
+
+  - powershell: |
+      Write-Host "##vso[build.addbuildtag]latest"
+    displayName: Add Latest Build tag
+    condition: and(succeeded(), eq(variables['isFilesChanged'], 'True'))
+    
+  - publish: $(Build.ArtifactStagingDirectory)
+    displayName: Publish artifacts
+    condition: and(succeeded(), eq(variables['isFilesChanged'], 'True'))
+    artifact: drop
